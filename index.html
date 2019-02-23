@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, user-scalable=yes, initial-scale=1" />
+<link rel="manifest" href="./manifest.json"/>
+<title>Color lantern</title>
+<link rel="icon" href="./favicon.png"/>
+<style>
+body {
+  margin: 0;
+  padding: 0;
+  font-family: sans-serif;
+}
+.fields, .buttons {
+  margin: 1rem;
+}
+.fields input {
+  display: block;
+  text-align: right;
+  font-size: 1.5rem;
+  width:  90%;
+  padding: 0.25rem;
+  font-family: monospace;
+  border: 1px inset #DDD;
+}
+#cost, #wage {
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' version='1.1' height='30px' width='30px'><text x='5' y='22' fill='gray' font-size='25'>$</text></svg>");
+  background-repeat: no-repeat;
+  background-position: left center;
+}
+.buttons {
+  display: flex;
+  justify-content: space-between;
+}
+.buttons button {
+  width: 45%;
+  font-size: 1.1rem;
+  display: flex;
+  justify-content: center;
+}
+.btn {
+	background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 5%, rgba(0, 0, 0, 0.25) 100%);
+	border-radius: 5px;
+	border: 0;
+	display:inline-block;
+	color:#ffffff;
+	padding:6px 13px;
+	text-shadow:0px 1px 0px rgba(0, 0, 0, 0.7);
+}
+.btn:hover {
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.25) 5%, rgba(0, 0, 0, 0) 100%);
+}
+#reset {
+  background-color: #B00;
+}
+#start {
+  background-color: #0B0;
+}
+.btn[disabled] {
+  color: #EEE;
+  background-color: gray !important;
+}
+
+</style>
+</head>
+<body>
+<div>
+  <div class="fields">
+  <p>
+    <label for="wage">Average monthly wage:</label>
+    <input type="number" id="wage" placeholder="0.00" step="0.01" min="0" autofocus required/>
+  </p>
+  <p>
+    <label for="people">Number of attendees:</label>
+    <input type="number" id="people" placeholder="1" value="1" step="1" min="0"required/>
+  </p>
+  </div>
+  <div class="buttons">
+  <button class="btn" id="reset">Reset</button>
+  <button class="btn" id="start">Start</button>
+  </div>
+  <div class="fields">
+  <p><input type="text" id="timer" placeholder="00:00:00" readonly/></p>
+  <p><input type="text" id="cost" placeholder="0.0" readonly/></p>
+  </div>
+</div>
+<a href="https://github.com/jjdelc/fluffy-adventure" style="color: rgba(0,0,0,0.75);display:block;position:absolute;bottom:5px;right:0; text-align:center;width:50%;font-family: sans-serif;font-size: 10px;margin: 0; padding:0;">Source code</a>
+<script src="upup.min.js"></script>
+<script>
+const M2S = 576000;
+const MS = 1000;
+function delay(t, v) {
+   return new Promise(function(resolve) {
+       setTimeout(resolve.bind(null, v), t * MS);
+   });
+}
+class Counter {
+    constructor(callback){
+        this.callback = callback;
+        this.started = false;
+    }
+    start(){
+      this.started = true;
+      this.inc();
+    }
+    async inc(){
+      this.callback();
+      if (this.started) {
+        await delay(1);
+        this.inc()
+      }
+    }
+    stop(){
+      this.started = false
+    }
+};
+
+function convertTime(sec) { // https://stackoverflow.com/a/49905383
+    var hours = Math.floor(sec/3600);
+    (hours >= 1) ? sec = sec - (hours*3600) : hours = '00';
+    var min = Math.floor(sec/60);
+    (min >= 1) ? sec = sec - (min*60) : min = '00';
+    (sec < 1) ? sec='00' : void 0;
+    (min.toString().length == 1) ? min = '0'+min : void 0;
+    (sec.toString().length == 1) ? sec = '0'+sec : void 0;
+    return hours+':'+min+':'+sec;
+}
+function formatTime(seconds){
+  return convertTime(seconds);
+}
+
+const moneyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'decimal',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1
+})
+function formatCost(cost){
+  return moneyFormatter.format(cost/M2S);
+}
+
+class App {
+    constructor(){
+      this.timer = document.getElementById("timer");
+      this.wage = document.getElementById("wage");
+      this.button = document.getElementById("start");
+      this.cost = document.getElementById("cost");
+      this.reset = document.getElementById("reset");
+      this.people = document.getElementById("people");
+      this.bind();
+      this.init();
+    }
+    init(){
+      this.elapsed = 0
+      this.active = false;
+      this.timer.value = "";
+      this.wage.value = "";
+      this.cost.value = "";
+      this.people.value = "1";
+      this.button.innerHTML = "Start";
+      this.wage.focus();
+    }
+    bind(){
+      this.button.onclick = ()=>{
+        if(this.active){
+          this.stop()
+        } else {
+          this.start()
+        }
+      }
+      this.reset.onclick = ()=>{
+        this.init();
+      }
+    }
+    start() {
+      this.active = true;
+      this.button.innerHTML = "Stop";
+      this.reset.disabled = true;
+      this.counter = new Counter(() => {
+        const wage = parseFloat(this.wage.value||0);
+        const people = parseInt(this.people.value||1);
+        this.elapsed++;
+        this.timer.value = formatTime(this.elapsed);
+        this.cost.value = formatCost(wage * this.elapsed * people);
+      });
+      this.counter.start();
+
+    }
+    stop(){
+      this.button.innerHTML = "Resume"
+      this.active = false;
+      this.reset.disabled = false;
+      this.counter.stop();
+    }
+}
+const app = new App();
+</script>
+</body>
+</html>
